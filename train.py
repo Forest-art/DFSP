@@ -11,20 +11,12 @@ from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data.dataloader import DataLoader
 import torch.nn.functional as F
 from model.dfsp import DFSP
-from parameters import parser
+from parameters import parser, YML_PATH
 
-# import test as test
+# from test import *
+import test as test
 from dataset import CompositionDataset
-# from datasets.read_datasets import DATASET_PATHS
-# from models.compositional_modules import get_model
 from utils import *
-
-DIR_PATH = os.path.dirname(os.path.realpath(__file__))
-DATASET_PATHS = {
-    "mit-states": os.path.join(DIR_PATH, "../../../dataset/mit-states"),
-    "ut-zappos": os.path.join(DIR_PATH, "../../../dataset/ut-zappos"),
-    "cgqa": os.path.join(DIR_PATH, "../../../dataset/cgqa")
-}
 
 def train_model(model, optimizer, config, train_dataset, val_dataset, test_dataset):
     train_dataloader = DataLoader(
@@ -58,11 +50,11 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
             batch_target = batch_target.cuda()
             batch_img = batch_img.cuda()
             logits, att_emb, obj_emb, logits_sp = model(batch_img, train_pairs)
-            loss_logit = loss_fn(logits, batch_target)
+            loss_logit_df = loss_fn(logits, batch_target)
             loss_logit_sp = loss_fn(logits_sp, batch_target)
             loss_att = loss_fn(att_emb, batch_attr)
             loss_obj = loss_fn(obj_emb, batch_obj)
-            loss = loss_logit + 0.01 * (loss_att + loss_obj) + 0.1 * loss_logit_sp
+            loss = loss_logit_df + config.att_obj_w * (loss_att + loss_obj) + config.sp_w * loss_logit_sp
 
             # normalize loss to account for batch accumulation
             loss = loss / config.gradient_accumulation_steps
@@ -85,7 +77,7 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
         train_losses.append(np.mean(epoch_train_losses))
 
         if (i + 1) % config.save_every_n == 0:
-            torch.save(model.state_dict(), os.path.join(config.save_path, f"{config.save_prefix}_epoch_{i}.pt"))
+            torch.save(model.state_dict(), os.path.join(config.save_path, f"{config.fusion}_epoch_{i}.pt"))
 
         print("Evaluating val dataset:")
         AUC = evaluate(model, val_dataset)
@@ -96,16 +88,16 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
             print("Evaluating test dataset:")
             evaluate(model, test_dataset)
             torch.save(model.state_dict(), os.path.join(
-            config.save_path, f"{config.save_prefix}_best.pt"
+            config.save_path, f"{config.fusion}_best.pt"
         ))
         if i + 1 == config.epochs:
             print("Evaluating test dataset on Closed World")
             model.load_state_dict(torch.load(os.path.join(
-            config.save_path, f"{config.save_prefix}_best.pt"
+            config.save_path, f"{config.fusion}_best.pt"
         )))
             evaluate(model, test_dataset)
     if config.save_model:
-        torch.save(model.state_dict(), os.path.join(config.save_path, f'final_model_{config.save_prefix}.pt'))
+        torch.save(model.state_dict(), os.path.join(config.save_path, f'final_model_{config.fusion}.pt'))
 
 
 
@@ -113,7 +105,7 @@ def evaluate(model, dataset):
     model.eval()
     evaluator = test.Evaluator(dataset, model=None)
     all_logits, all_attr_gt, all_obj_gt, all_pair_gt = test.predict_logits(
-            model, dataset, device, config)
+            model, dataset, config)
     test_stats = test.test(
             dataset,
             evaluator,
@@ -135,12 +127,12 @@ def evaluate(model, dataset):
 
 if __name__ == "__main__":
     config = parser.parse_args()
-    load_args('./config/ut-zappos.yml', config)
+    load_args(YML_PATH[config.dataset], config)
     print(config)
     # set the seed value
     set_seed(config.seed)
 
-    dataset_path = DATASET_PATHS[config.dataset]
+    dataset_path = config.dataset_path
 
     train_dataset = CompositionDataset(dataset_path,
                                        phase='train',
@@ -163,7 +155,7 @@ if __name__ == "__main__":
     model = DFSP(config, attributes=attributes, classes=classes, offset=offset).cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     
-    if config.load_model is not None:
+    if config.load_model is not False:
         model.load_state_dict(torch.load(config.load_model))
 
     os.makedirs(config.save_path, exist_ok=True)

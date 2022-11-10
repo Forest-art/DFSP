@@ -223,8 +223,8 @@ class FusionTextImageBlock(nn.Module):
     def img2txt(self, x: torch.Tensor):
         x = self.img2txt_transform_layer1(x)
         x = x.permute(2,1,0)
-        x = self.img2txt_transform_layer2(x).mean(dim=1)
-        x = x.permute(1,0).reshape(self.context_length, -1, 768)
+        x = self.img2txt_transform_layer2(x)
+        x = x.permute(2,1,0).reshape(-1, self.context_length * (self.attributes + self.classes), 768)
         x = self.dropout(x)
         return x
     
@@ -253,9 +253,9 @@ class FusionTextImageBlock(nn.Module):
         elif self.fusion == "img2txt":
             x_txt = self.img2txt(x_image)
             x_text = self.decompose(x_text, idx)
-            x_txt = self.crossblock_txt(x_text, x_txt)
+            x_txt = self.crossblock_txt(x_text.repeat(b, 1, 1), x_txt)
             x_txt = self.resblocks_txt(x_txt)
-            # x_txt = x_txt.reshape(b, -1, self.attributes + self.classes, 768)
+            x_txt = x_txt.reshape(b, -1, self.attributes + self.classes, 768)
             x_txt = self.compose(x_txt, idx)
             x_img = self.resblocks_img(x_image)
             return x_img, x_txt

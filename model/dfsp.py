@@ -36,8 +36,8 @@ class DFSP(nn.Module):
 
         self.soft_att_obj = nn.Parameter(self.soft_att_obj)
         self.soft_prompt = nn.Parameter(ctx_vectors).cuda()
-        self.fusion = FusionTextImageBlock(1024, 768, len(self.attributes), len(self.classes), 1, context_length=self.config.context_length, fusion=self.config.fusion)
-        self.weight = 0.8
+        self.fusion = FusionTextImageBlock(1024, 768, len(self.attributes), len(self.classes), config.SA_K, context_length=self.config.context_length, fusion=self.config.fusion)
+        self.weight = config.res_w
 
 
     def construct_soft_prompt(self):
@@ -119,63 +119,35 @@ class DFSP(nn.Module):
         if self.clip.visual.proj is not None:
             img_feature = img_feature @ self.clip.visual.proj
         
-        txt_feature = txt.permute(1, 0, 2)
-        txt_feature = self.text_encoder.ln_final(txt_feature)
-        txt_tf = (
-            txt_feature[
-                torch.arange(txt_feature.shape[0]), self.token_ids.argmax(dim=-1)
-            ]  # POS of <EOS>
-            @ self.text_encoder.text_projection
-        )
+        if self.config.fusion in ["BiFusion", "img2txt"]: 
+            txt_feature = txt.permute(0, 2, 1, 3)
+            txt_feature = self.text_encoder.ln_final(txt_feature)
+            txt_ft = (
+                txt_feature[
+                    :, torch.arange(txt_feature.shape[1]), self.token_ids.argmax(dim=-1)
+                ]  # POS of <EOS>
+                @ self.text_encoder.text_projection
+            )
+        else:
+            txt_feature = txt.permute(1, 0, 2)
+            txt_feature = self.text_encoder.ln_final(txt_feature)
+            txt_tf = (
+                txt_feature[
+                    torch.arange(txt_feature.shape[0]), self.token_ids.argmax(dim=-1)
+                ]  # POS of <EOS>
+                @ self.text_encoder.text_projection
+            )
         return img_feature, txt_tf
 
-
-    def ft_to_logit_test(self, img):
-        img_feature = img.permute(1, 0, 2)  # LND -> NLD
-
-        img_feature = self.clip.visual.ln_post(img_feature[:, 0, :])
-        if self.clip.visual.proj is not None:
-            img_feature = img_feature @ self.clip.visual.proj
-        return img_feature
-    
-
-    def decompose_txt_ft(self, text_feature, idx):
-        t, l, c = text_feature.shape
+    def decompose_logits(self, logits, idx):
         att_idx, obj_idx = idx[:, 0].cpu().numpy(), idx[:, 1].cpu().numpy()
-        text_att = torch.zeros(t, len(self.attributes), c).cuda()
-        text_obj = torch.zeros(t, len(self.classes), c).cuda()
+        logits_att = torch.zeros(logits.shape[0], len(self.attributes)).cuda()
+        logits_obj = torch.zeros(logits.shape[0], len(self.classes)).cuda()
         for i in range(len(self.attributes)):
-            text_att[:, i, :] = text_feature[:, np.where(att_idx==i)[0], :].mean(-2)
+            logits_att[:, i] = logits[:, np.where(att_idx==i)[0]].mean(-1)
         for i in range(len(self.classes)):
-            text_obj[:, i, :] = text_feature[:, np.where(obj_idx==i)[0], :].mean(-2)    
-
-        text_att, text_obj = text_att.type(self.clip.dtype), text_obj.type(self.clip.dtype)
-        text_att = text_att.permute(1, 0, 2)
-        text_att = self.text_encoder.ln_final(text_att)
-        text_att = (
-            text_att[
-                torch.arange(text_att.shape[0]), self.token_ids.argmax(dim=-1)
-            ]  # POS of <EOS>
-            @ self.text_encoder.text_projection
-        )
-
-        text_obj = text_obj.permute(1, 0, 2)
-        text_obj = self.text_encoder.ln_final(text_obj)
-        text_obj = (
-            text_obj[
-                torch.arange(text_obj.shape[0]), self.token_ids.argmax(dim=-1)
-            ]  # POS of <EOS>
-            @ self.text_encoder.text_projection
-        )
-
-        text_att = text_att / text_att.norm(
-            dim=-1, keepdim=True
-        )
-        text_obj = text_obj / text_obj.norm(
-            dim=-1, keepdim=True
-        )
-        return text_att, text_obj
-
+            logits_obj[:, i] = logits[:, np.where(obj_idx==i)[0]].mean(-1)        
+        return logits_att, logits_obj
 
 
     def forward(self, batch_img, idx):
@@ -190,27 +162,29 @@ class DFSP(nn.Module):
         )  
         batch_img_soft_prompt = batch_img / batch_img.norm(dim=-1, keepdim=True)
         text_features_soft_prompt = text_features / text_features.norm(dim=-1, keepdim=True)
-        text_att_ft, text_obj_ft = self.decompose_txt_ft(text_ft.type(torch.float), idx)
         img_ft, text_ft = self.fusion(img_ft.type(torch.float), text_ft.type(torch.float), idx, b)
         img_ft, text_ft = self.ft_to_logit(img_ft.type(self.clip.dtype), text_ft.type(self.clip.dtype))
         batch_img = self.weight * batch_img + (1 - self.weight) * img_ft
         normalized_img = batch_img / batch_img.norm(dim=-1, keepdim=True)
-        text_features = self.weight * text_features + (1 - self.weight) * text_ft
+        if self.config.fusion in ["BiFusion", "img2txt"]: 
+            text_features = self.weight * text_features.repeat(b, 1, 1) + (1 - self.weight) * text_ft
+        else:
+            text_features = self.weight * text_features + (1 - self.weight) * text_ft
         idx_text_features = text_features / text_features.norm(
             dim=-1, keepdim=True
         )
-        # print(normalized_img.shape, idx_text_features.shape)
-        # logits = (
-        #     self.clip.logit_scale.exp()
-        #     * normalized_img.unsqueeze(1)
-        #     @ idx_text_features.permute(0,2,1)
-        # ).squeeze()     ###     48 * 1262
-
-        logits = (
-            self.clip.logit_scale.exp()
-            * normalized_img
-            @ idx_text_features.t()
-        )   
+        if self.config.fusion in ["BiFusion", "img2txt"]: 
+            logits = (
+                self.clip.logit_scale.exp()
+                * normalized_img.unsqueeze(1)
+                @ idx_text_features.permute(0,2,1)
+            ).squeeze()     ###     48 * 1262
+        else:
+            logits = (
+                self.clip.logit_scale.exp()
+                * normalized_img
+                @ idx_text_features.t()
+            )   
 
         logits_soft_prompt = (
             self.clip.logit_scale.exp()
@@ -218,16 +192,6 @@ class DFSP(nn.Module):
             @ text_features_soft_prompt.t()
         )     
 
-        logits_att = (
-            self.clip.logit_scale.exp()
-            * batch_img_soft_prompt
-            @ text_att_ft.t()
-        )   
-
-        logits_obj = (
-            self.clip.logit_scale.exp()
-            * batch_img_soft_prompt
-            @ text_obj_ft.t()
-        )   
+        logits_att, logits_obj = self.decompose_logits(logits_soft_prompt, idx)
 
         return logits, logits_att, logits_obj, logits_soft_prompt

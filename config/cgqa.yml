@@ -3,9 +3,12 @@ model:
   K: 1
   prompt_template: "a photo of x x"
   clip_model: "ViT-L/14"
-
+  res_w: 0.8
+  SA_K: 1
+  
 train:
   dataset: cgqa
+  dataset_path: "../../../dataset/cgqa"
   lr: 0.00005
   attr_dropout: 0.3
   weight_decay: 0.00001
@@ -16,7 +19,15 @@ train:
   epochs: 20
   epoch_start: 0
   save_path: data/model/cgqa/dfsp
-
+  load_model: False     # False or model path
+  att_obj_w: 0.01
+  sp_w: 0.1
 
 test:
   eval_batch_size: 128
+  open_world: False
+  topk: 1
+  text_encoder_batch_size: 36
+  threshold: 0.4
+  threshold_trials: 50
+  bias: 0.001

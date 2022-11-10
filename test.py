@@ -14,16 +14,15 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 import cv2
 
-from clip_modules.interface import CLIPInterface
-from clip_modules.model_loader import load
-from datasets.composition_dataset import CompositionDataset
-from datasets.read_datasets import DATASET_PATHS
-from models.compositional_modules import get_model
+from utils import *
+from parameters import parser, YML_PATH
+from dataset import CompositionDataset
+from model.dfsp import DFSP
+
 
 cudnn.benchmark = True
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 
 
 class Evaluator:
@@ -370,46 +369,7 @@ class Evaluator:
 
 
 
-def clip_baseline(model, test_dataset, config, device):
-    """Function to get the clip representations.
-
-    Args:
-        model (nn.Module): the clip model
-        test_dataset (CompositionDataset): the test/validation dataset
-        config (argparse.ArgumentParser): config/args
-        device (str): device type cpu/cuda:0
-
-    Returns:
-        torch.Tensor: returns the tensor with the attribute-object
-            representations with clip model.
-    """
-    pairs = test_dataset.pairs
-    pairs = [(attr.replace(".", " ").lower(),
-              obj.replace(".", " ").lower())
-             for attr, obj in pairs]
-
-    prompts = [f"a photo of {attr} {obj}" for attr, obj in pairs]
-    tokenized_prompts = clip.tokenize(
-        prompts, context_length=config.context_length)
-    test_batch_tokens = np.array_split(
-        tokenized_prompts,
-        len(tokenized_prompts) //
-        config.text_encoder_batch_size)
-    rep = torch.Tensor().to(device).type(model.dtype)
-    with torch.no_grad():
-        for batch_tokens in test_batch_tokens:
-            batch_tokens = batch_tokens.to(device)
-            _text_features = model.text_encoder(
-                batch_tokens, enable_pos_emb=True)
-            text_features = _text_features / _text_features.norm(
-                dim=-1, keepdim=True
-            )
-            rep = torch.cat((rep, text_features), dim=0)
-
-    return rep
-
-
-def predict_logits(model, dataset, device, config):
+def predict_logits(model, dataset, config):
     """Function to predict the cosine similarities between the
     images and the attribute-object representations. The function
     also returns the ground truth for attributes, objects, and pair
@@ -437,32 +397,22 @@ def predict_logits(model, dataset, device, config):
     # print(text_rep.shape)
     pairs_dataset = dataset.pairs
     pairs = torch.tensor([(attr2idx[attr], obj2idx[obj])
-                                for attr, obj in pairs_dataset]).to(device)
+                                for attr, obj in pairs_dataset]).cuda()
     pairs_pos = [pair[0]*len(obj2idx)+pair[1] for pair in pairs]
     dataloader = DataLoader(
         dataset,
         batch_size=config.eval_batch_size,
         shuffle=False)
     all_logits = torch.Tensor()
-    # text_features, text_ft, decom_text_ft = model.batch_text_encoder(pairs)
     with torch.no_grad():
         for idx, data in tqdm(
             enumerate(dataloader), total=len(dataloader), desc="Testing"
         ):
-            batch_img = data[0].to(device)
-            # logits = model.test(batch_img, pairs, text_features, text_ft, decom_text_ft)
+            batch_img = data[0].cuda()
             logits, att_emb, obj_emb, logits_sp = model(batch_img, pairs)
-            attr_truth, obj_truth, pair_truth, img_path = data[1], data[2], data[3], data[4]
+            attr_truth, obj_truth, pair_truth = data[1], data[2], data[3]
             logits = logits.cpu()
             all_logits = torch.cat([all_logits, logits], dim=0)
-            # _, pred_pair = logits.type(torch.float).topk(k=3, dim=1)
-            # if pairs_dataset[pred_pair[0][0]] == pairs_dataset[pair_truth]:
-            #     print(img_path)
-            #     print(idx, pairs_dataset[pred_pair[0][0]], pairs_dataset[pred_pair[0][1]], pairs_dataset[pred_pair[0][2]], pairs_dataset[pair_truth])
-            #     os.makedirs('./demo/ut-zappos/', exist_ok=True)
-            #     img = cv2.imread('/data/jyy/lll/dataset/ut-zappos/images/' + img_path[0])
-            #     cv2.imwrite('./demo/ut-zappos/' + str(idx) + '.jpg', img)
-
             all_attr_gt.append(attr_truth)
             all_obj_gt.append(obj_truth)
             all_pair_gt.append(pair_truth)
@@ -568,90 +518,8 @@ def test(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", help="name of the dataset", type=str)
-    parser.add_argument(
-        "--lr", help="learning rate", type=float, default=1e-04
-    )
-    parser.add_argument(
-        "--weight_decay", help="weight decay", type=float, default=1e-05
-    )
-    parser.add_argument(
-        "--clip_model", help="clip model type", type=str, default="ViT-B/32"
-    )
-    parser.add_argument(
-        "--eval_batch_size", help="eval batch size", default=64, type=int
-    )
-    parser.add_argument(
-        "--experiment_name",
-        help="name of the experiment",
-        type=str,
-    )
-    parser.add_argument(
-        "--evaluate_only",
-        help="directly evaluate on the" "dataset without any training",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--context_length",
-        help="sets the context length of the clip model",
-        default=32,
-        type=int,
-    )
-    parser.add_argument(
-        "--attr_dropout",
-        help="add dropout to attributes",
-        type=float,
-        default=0.0,
-    )
-    parser.add_argument(
-        "--open_world",
-        help="evaluate on open world setup",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--fusion",
-        default="BiFusion",
-        help="cross modal fusion method, choices = [BiFusion, txt2img, img2txt, NoFusion, DeCom]",
-    )
-    parser.add_argument(
-        "--bias",
-        help="eval bias",
-        type=float,
-        default=1e3,
-    )
-    parser.add_argument(
-        "--topk",
-        help="eval topk",
-        type=int,
-        default=1,
-    )
-    parser.add_argument(
-        "--soft_embeddings",
-        help="location for softembeddings",
-        type=str,
-        default="./data/model/mit-states/sps_cross/sps_cross_best.pt",
-    )
-
-    parser.add_argument(
-        "--text_encoder_batch_size",
-        help="batch size of the text encoder",
-        default=16,
-        type=int,
-    )
-    parser.add_argument(
-        '--threshold',
-        type=float,
-        help="optional threshold"
-    )
-    parser.add_argument(
-        '--threshold_trials',
-        type=int,
-        default=50,
-        help="how many threshold values to try"
-    )
-
     config = parser.parse_args()
+    load_args(YML_PATH[config.dataset], config)
 
     # set the seed value
     
@@ -660,13 +528,8 @@ if __name__ == "__main__":
     print(f"dataset: {config.dataset}")
     print(f"experiment name: {config.experiment_name}")
 
-    if config.experiment_name != 'clip':
-        if not os.path.exists(config.soft_embeddings):
-            print(f'{config.soft_embeddings} not found')
-            print('code exiting!')
-            exit(0)
 
-    dataset_path = DATASET_PATHS[config.dataset]
+    dataset_path = config.dataset_path
 
     print('loading validation dataset')
     val_dataset = CompositionDataset(dataset_path,
@@ -679,22 +542,15 @@ if __name__ == "__main__":
                                       phase='test',
                                       split='compositional-split-natural',
                                       open_world=config.open_world)
-    # get the model and the text rep
-    if config.experiment_name == 'clip':
-        clip_model, preprocess = load(
-            config.clip_model, device=device, context_length=config.context_length)
 
-        model = CLIPInterface(
-            clip_model,
-            config,
-            token_ids=None,
-            device=device,
-            enable_pos_emb=True)
-        val_text_rep = clip_baseline(model, val_dataset, config, device)
-        test_text_rep = clip_baseline(model, test_dataset, config, device)
-    else:
-        model, optimizer = get_model(val_dataset, config, device)
-        model.load_state_dict(torch.load(config.soft_embeddings))
+    allattrs = val_dataset.attrs
+    allobj = val_dataset.objs
+    classes = [cla.replace(".", " ").lower() for cla in allobj]
+    attributes = [attr.replace(".", " ").lower() for attr in allattrs]
+    offset = len(attributes)
+
+    model = DFSP(config, attributes=attributes, classes=classes, offset=offset).cuda()
+    model.load_state_dict(torch.load(config.load_model))
 
     print('evaluating on the validation set')
     if config.open_world and config.threshold is None:
