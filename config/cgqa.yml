@@ -1,0 +1,22 @@
+model:
+  fusion: txt2img
+  K: 1
+  prompt_template: "a photo of x x"
+  clip_model: "ViT-L/14"
+
+train:
+  dataset: cgqa
+  lr: 0.00005
+  attr_dropout: 0.3
+  weight_decay: 0.00001
+  context_length: 8
+  train_batch_size: 256
+  gradient_accumulation_steps: 1
+  seed: 0
+  epochs: 20
+  epoch_start: 0
+  save_path: data/model/cgqa/dfsp
+
+
+test:
+  eval_batch_size: 128
