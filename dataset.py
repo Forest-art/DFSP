@@ -11,7 +11,7 @@ from torchvision.transforms import (CenterCrop, Compose, InterpolationMode,
 from torchvision.transforms.transforms import RandomResizedCrop
 
 BICUBIC = InterpolationMode.BICUBIC
-n_px = 224
+n_px = 336
 
 
 def transform_image(split="train", imagenet=False):
@@ -187,7 +187,7 @@ class CompositionDataset(Dataset):
 
         if self.phase == 'train':
             data = [
-                img, self.attr2idx[attr], self.obj2idx[obj], self.pair2idx[(attr, obj)]
+                img, self.attr2idx[attr], self.obj2idx[obj], self.train_pair_to_idx[(attr, obj)]
             ]
         else:
             data = [
