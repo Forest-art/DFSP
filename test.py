@@ -15,6 +15,7 @@ from tqdm import tqdm
 import cv2
 
 from utils import *
+from loss import loss_calu
 from parameters import parser, YML_PATH
 from dataset import CompositionDataset
 from model.dfsp import DFSP
@@ -404,12 +405,15 @@ def predict_logits(model, dataset, config):
         batch_size=config.eval_batch_size,
         shuffle=False)
     all_logits = torch.Tensor()
+    loss = 0
     with torch.no_grad():
         for idx, data in tqdm(
             enumerate(dataloader), total=len(dataloader), desc="Testing"
         ):
             batch_img = data[0].cuda()
-            logits, att_emb, obj_emb, logits_sp = model(batch_img, pairs)
+            predict = model(batch_img, pairs)
+            logits = predict[0]
+            loss += loss_calu(predict, data, config)
             attr_truth, obj_truth, pair_truth = data[1], data[2], data[3]
             logits = logits.cpu()
             all_logits = torch.cat([all_logits, logits], dim=0)
@@ -423,7 +427,7 @@ def predict_logits(model, dataset, config):
         torch.cat(all_pair_gt).to("cpu"),
     )
 
-    return all_logits, all_attr_gt, all_obj_gt, all_pair_gt
+    return all_logits, all_attr_gt, all_obj_gt, all_pair_gt, loss / len(dataloader)
 
 
 def threshold_with_feasibility(
@@ -526,7 +530,6 @@ if __name__ == "__main__":
     print("evaluation details")
     print("----")
     print(f"dataset: {config.dataset}")
-    print(f"experiment name: {config.experiment_name}")
 
 
     dataset_path = config.dataset_path
@@ -571,7 +574,7 @@ if __name__ == "__main__":
         best_th = -10
         val_stats = None
         with torch.no_grad():
-            all_logits, all_attr_gt, all_obj_gt, all_pair_gt = predict_logits(
+            all_logits, all_attr_gt, all_obj_gt, all_pair_gt, loss_avg = predict_logits(
                 model, val_dataset, device, config)
             for th in thresholds:
                 temp_logits = threshold_with_feasibility(
@@ -601,8 +604,8 @@ if __name__ == "__main__":
             feasibility_path,
             map_location='cpu')['feasibility']
         with torch.no_grad():
-            all_logits, all_attr_gt, all_obj_gt, all_pair_gt = predict_logits(
-                model, val_dataset, device, config)
+            all_logits, all_attr_gt, all_obj_gt, all_pair_gt, loss_avg = predict_logits(
+                model, val_dataset, config)
             if config.open_world:
                 print('using threshold: ', best_th)
                 all_logits = threshold_with_feasibility(
@@ -625,8 +628,8 @@ if __name__ == "__main__":
     print('evaluating on the test set')
     with torch.no_grad():
         evaluator = Evaluator(test_dataset, model=None)
-        all_logits, all_attr_gt, all_obj_gt, all_pair_gt = predict_logits(
-            model, test_dataset, device, config)
+        all_logits, all_attr_gt, all_obj_gt, all_pair_gt, loss_avg = predict_logits(
+            model, test_dataset, config)
         if config.open_world and best_th is not None:
             print('using threshold: ', best_th)
             all_logits = threshold_with_feasibility(
@@ -658,13 +661,12 @@ if __name__ == "__main__":
     if best_th is not None:
         results['best_threshold'] = best_th
 
-    if config.experiment_name != 'clip':
-        if config.open_world:
-            result_path = config.soft_embeddings[:-2] + "open.calibrated.json"
-        else:
-            result_path = config.soft_embeddings[:-2] + "closed.json"
+    if config.open_world:
+        result_path = config.soft_embeddings[:-2] + "open.calibrated.json"
+    else:
+        result_path = config.soft_embeddings[:-2] + "closed.json"
 
-        with open(result_path, 'w+') as fp:
-            json.dump(results, fp)
+    with open(result_path, 'w+') as fp:
+        json.dump(results, fp)
 
     print("done!")

@@ -194,4 +194,4 @@ class DFSP(nn.Module):
 
         logits_att, logits_obj = self.decompose_logits(logits_soft_prompt, idx)
 
-        return logits, logits_att, logits_obj, logits_soft_prompt
+        return (logits, logits_att, logits_obj, logits_soft_prompt)

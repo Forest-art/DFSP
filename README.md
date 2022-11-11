@@ -7,7 +7,6 @@ DFSP is a model which decomposes the prompt language feature into state feature 
 conda create --name clip python=3.7
 conda activate clip
 pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
-pip3 install ftfy regex tqdm scipy pandas
 pip3 install git+https://github.com/openai/CLIP.git
 ```
 Alternatively, you can use `pip install -r requirements.txt` to install all the dependencies.

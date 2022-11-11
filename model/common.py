@@ -234,8 +234,8 @@ class FusionTextImageBlock(nn.Module):
         x = self.txt2img_transform_layer1(x)
         x = rearrange(x, 't l c -> c (t l)')
         x = self.txt2img_transform_layer2(x)
-        x = x.permute(1,0).unsqueeze(1).repeat(1,b,1)
         x = self.dropout(x)
+        x = x.permute(1,0).unsqueeze(1).repeat(1,b,1)
         return x
         
 
@@ -262,9 +262,7 @@ class FusionTextImageBlock(nn.Module):
         elif self.fusion == "txt2img":
             x_img = self.crossblock_img(x_image, self.txt2img(x_text, idx, b))
             x_img = self.resblocks_img(x_img)
-            # x_txt = self.decompose(x_text, idx)
             x_txt = self.resblocks_txt(x_text)
-            # x_txt = self.compose(x_txt, idx)
             return x_img, x_txt
         elif self.fusion == "OnlySPM":
             return x_image, x_text

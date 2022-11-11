@@ -12,6 +12,7 @@ from torch.utils.data.dataloader import DataLoader
 import torch.nn.functional as F
 from model.dfsp import DFSP
 from parameters import parser, YML_PATH
+from loss import loss_calu
 
 # from test import *
 import test as test
@@ -26,14 +27,15 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
     )
 
     model.train()
-    best_AUC = 0
-    loss_fn = CrossEntropyLoss()
+    best_loss = 1e5
     
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
     attr2idx = train_dataset.attr2idx
     obj2idx = train_dataset.obj2idx
 
     train_pairs = torch.tensor([(attr2idx[attr], obj2idx[obj])
                                 for attr, obj in train_dataset.train_pairs]).cuda()
+                                
     train_losses = []
 
     for i in range(config.epoch_start, config.epochs):
@@ -44,17 +46,10 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
         epoch_train_losses = []
         for bid, batch in enumerate(train_dataloader):
 
-            batch_img, batch_attr, batch_obj, batch_target = batch[0], batch[1], batch[2], batch[3]
-            batch_attr = batch_attr.cuda()
-            batch_obj = batch_obj.cuda()
-            batch_target = batch_target.cuda()
-            batch_img = batch_img.cuda()
-            logits, att_emb, obj_emb, logits_sp = model(batch_img, train_pairs)
-            loss_logit_df = loss_fn(logits, batch_target)
-            loss_logit_sp = loss_fn(logits_sp, batch_target)
-            loss_att = loss_fn(att_emb, batch_attr)
-            loss_obj = loss_fn(obj_emb, batch_obj)
-            loss = loss_logit_df + config.att_obj_w * (loss_att + loss_obj) + config.sp_w * loss_logit_sp
+            batch_img = batch[0].cuda()
+            predict = model(batch_img, train_pairs)
+
+            loss = loss_calu(predict, batch, config)
 
             # normalize loss to account for batch accumulation
             loss = loss / config.gradient_accumulation_steps
@@ -69,9 +64,8 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
 
             epoch_train_losses.append(loss.item())
             progress_bar.set_postfix({"train loss": np.mean(epoch_train_losses[-50:])})
-
             progress_bar.update()
-
+        scheduler.step()
         progress_bar.close()
         progress_bar.write(f"epoch {i +1} train loss {np.mean(epoch_train_losses)}")
         train_losses.append(np.mean(epoch_train_losses))
@@ -80,11 +74,12 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
             torch.save(model.state_dict(), os.path.join(config.save_path, f"{config.fusion}_epoch_{i}.pt"))
 
         print("Evaluating val dataset:")
-        AUC = evaluate(model, val_dataset)
+        loss_avg = evaluate(model, val_dataset)
+        print("Loss average on val dataset: {}".format(loss_avg))
         print("Evaluating test dataset:")
         _ = evaluate(model, test_dataset)
-        if AUC > best_AUC:
-            best_AUC = AUC
+        if loss_avg < best_loss:
+            best_loss = loss_avg
             print("Evaluating test dataset:")
             evaluate(model, test_dataset)
             torch.save(model.state_dict(), os.path.join(
@@ -104,7 +99,7 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
 def evaluate(model, dataset):
     model.eval()
     evaluator = test.Evaluator(dataset, model=None)
-    all_logits, all_attr_gt, all_obj_gt, all_pair_gt = test.predict_logits(
+    all_logits, all_attr_gt, all_obj_gt, all_pair_gt, loss_avg = test.predict_logits(
             model, dataset, config)
     test_stats = test.test(
             dataset,
@@ -121,7 +116,7 @@ def evaluate(model, dataset):
         if key in key_set:
             result = result + key + "  " + str(round(test_stats[key], 4)) + "| "
     print(result)   
-    return test_stats['AUC']
+    return loss_avg
 
 
 

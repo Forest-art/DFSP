@@ -9,16 +9,17 @@ model:
 train:
   dataset: ut-zappos
   dataset_path: "../../../dataset/ut-zappos"
-  lr: 0.00005
+  lr: 0.0005
   attr_dropout: 0.3
   weight_decay: 0.00001
   context_length: 8
   train_batch_size: 256
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 2
   seed: 0
   epochs: 20
   epoch_start: 0
   save_path: data/model/ut-zappos/dfsp
+  save_model: True
   load_model: False     # False or model path
   att_obj_w: 0.01
   sp_w: 0.1
@@ -26,6 +27,7 @@ train:
 test:
   eval_batch_size: 128
   open_world: False
+  # load_model: "/data/jyy/lll/project/CVPR2023/DFSP/data/model/ut-zappos/dfsp/txt2img_epoch_4.pt"
   topk: 1
   text_encoder_batch_size: 36
   threshold: 0.4
