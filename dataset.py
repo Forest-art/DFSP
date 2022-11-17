@@ -11,7 +11,7 @@ from torchvision.transforms import (CenterCrop, Compose, InterpolationMode,
 from torchvision.transforms.transforms import RandomResizedCrop
 
 BICUBIC = InterpolationMode.BICUBIC
-n_px = 336
+n_px = 224
 
 
 def transform_image(split="train", imagenet=False):

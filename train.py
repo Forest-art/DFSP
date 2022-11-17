@@ -150,8 +150,8 @@ if __name__ == "__main__":
     model = DFSP(config, attributes=attributes, classes=classes, offset=offset).cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
     
-    if config.load_model is not False:
-        model.load_state_dict(torch.load(config.load_model))
+    # if config.load_model is not False:
+    #     model.load_state_dict(torch.load(config.load_model))
 
     os.makedirs(config.save_path, exist_ok=True)
 

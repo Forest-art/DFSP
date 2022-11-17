@@ -185,13 +185,13 @@ class FusionTextImageBlock(nn.Module):
         self.context_length = context_length
         self.attributes = attributes
         self.classes = classes
-        self.img2txt_transform_layer1 = nn.Linear(1024, 768)
+        self.img2txt_transform_layer1 = nn.Linear(width_img, width_txt)
         self.img2txt_transform_layer2 = nn.Linear(257, context_length * (attributes + classes))
-        self.txt2img_transform_layer1 = nn.Linear(768, 1024)
+        self.txt2img_transform_layer1 = nn.Linear(width_txt, width_img)
         self.txt2img_transform_layer2 = nn.Linear(context_length * (attributes + classes), 257)
         self.dropout = nn.Dropout(0.3)
         self.crossblock_img = CrossResidualAttentionBlock(width_img, width_img//64, attn_mask)
-        self.crossblock_txt = CrossResidualAttentionBlock(width_txt, width_img//64, attn_mask)
+        self.crossblock_txt = CrossResidualAttentionBlock(width_txt, width_txt//64, attn_mask)
         self.resblocks_img = nn.Sequential(*[ResidualAttentionBlock(width_img, width_img//64, attn_mask) for _ in range(layers)])
         self.resblocks_txt = nn.Sequential(*[ResidualAttentionBlock(width_txt, width_txt//64, attn_mask) for _ in range(layers)])
         self.txt_fine_tune = nn.Linear(768, 768)

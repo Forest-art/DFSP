@@ -36,7 +36,7 @@ class DFSP(nn.Module):
 
         self.soft_att_obj = nn.Parameter(self.soft_att_obj)
         self.soft_prompt = nn.Parameter(ctx_vectors).cuda()
-        self.fusion = FusionTextImageBlock(1024, 768, len(self.attributes), len(self.classes), config.SA_K, context_length=self.config.context_length, fusion=self.config.fusion)
+        self.fusion = FusionTextImageBlock(config.width_img, config.width_txt, len(self.attributes), len(self.classes), config.SA_K, context_length=self.config.context_length, fusion=self.config.fusion)
         self.weight = config.res_w
 
 

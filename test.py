@@ -399,7 +399,6 @@ def predict_logits(model, dataset, config):
     pairs_dataset = dataset.pairs
     pairs = torch.tensor([(attr2idx[attr], obj2idx[obj])
                                 for attr, obj in pairs_dataset]).cuda()
-    pairs_pos = [pair[0]*len(obj2idx)+pair[1] for pair in pairs]
     dataloader = DataLoader(
         dataset,
         batch_size=config.eval_batch_size,
@@ -662,9 +661,9 @@ if __name__ == "__main__":
         results['best_threshold'] = best_th
 
     if config.open_world:
-        result_path = config.soft_embeddings[:-2] + "open.calibrated.json"
+        result_path = config.load_model[:-2] + "open.calibrated.json"
     else:
-        result_path = config.soft_embeddings[:-2] + "closed.json"
+        result_path = config.load_model[:-2] + "closed.json"
 
     with open(result_path, 'w+') as fp:
         json.dump(results, fp)
