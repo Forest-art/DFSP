@@ -122,7 +122,7 @@ class DFSP(nn.Module):
         if self.config.fusion in ["BiFusion", "img2txt"]: 
             txt_feature = txt.permute(0, 2, 1, 3)
             txt_feature = self.text_encoder.ln_final(txt_feature)
-            txt_ft = (
+            txt_tf = (
                 txt_feature[
                     :, torch.arange(txt_feature.shape[1]), self.token_ids.argmax(dim=-1)
                 ]  # POS of <EOS>

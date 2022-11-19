@@ -19,6 +19,7 @@ train:
   epochs: 20
   epoch_start: 0
   save_path: data/model/cgqa/dfsp
+  best_model_metric: best_loss     #best_unseen  best_seen AUC best_loss best_hm
   load_model: False     # False or model path
   att_obj_w: 0.01
   sp_w: 0.1

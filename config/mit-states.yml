@@ -11,19 +11,20 @@ model:
 train:
   dataset: mit-states
   dataset_path: "../../../dataset/mit-states"
-  lr: 0.0005
+  lr: 0.0001
   attr_dropout: 0.3
   weight_decay: 0.00001
   context_length: 8
   train_batch_size: 128
-  gradient_accumulation_steps: 1
+  gradient_accumulation_steps: 2
   seed: 0
   epochs: 20
   epoch_start: 0
-  save_path: data/model/mit-states/dfsp_w10
+  save_path: data/model/mit-states/dfsp
   load_model: False
+  best_model_metric: best_unseen     #best_unseen  best_seen AUC best_loss best_hm
   att_obj_w: 0.01
-  sp_w: 10
+  sp_w: 0.1
 
 test:
   eval_batch_size: 128
@@ -33,4 +34,4 @@ test:
   threshold: 0.4
   threshold_trials: 50
   bias: 0.001
-  load_model:  data/model/mit-states/dfsp_w10/txt2img_best.pt    # False or model path
+  load_model:  data/model/mit-states/dfsp/txt2img_best.pt    # False or model path

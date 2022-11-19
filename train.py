@@ -28,6 +28,7 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
 
     model.train()
     best_loss = 1e5
+    best_metric = 0
     
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.5)
     attr2idx = train_dataset.attr2idx
@@ -74,17 +75,24 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
             torch.save(model.state_dict(), os.path.join(config.save_path, f"{config.fusion}_epoch_{i}.pt"))
 
         print("Evaluating val dataset:")
-        loss_avg = evaluate(model, val_dataset)
+        loss_avg, val_result = evaluate(model, val_dataset)
         print("Loss average on val dataset: {}".format(loss_avg))
-        print("Evaluating test dataset:")
-        _ = evaluate(model, test_dataset)
-        if loss_avg < best_loss:
-            best_loss = loss_avg
-            print("Evaluating test dataset:")
-            evaluate(model, test_dataset)
-            torch.save(model.state_dict(), os.path.join(
-            config.save_path, f"{config.fusion}_best.pt"
-        ))
+        if config.best_model_metric == "best_loss":
+            if loss_avg < best_loss:
+                best_loss = loss_avg
+                print("Evaluating test dataset:")
+                evaluate(model, test_dataset)
+                torch.save(model.state_dict(), os.path.join(
+                config.save_path, f"{config.fusion}_best.pt"
+            ))
+        else:
+            if val_result[config.best_model_metric] > best_metric:
+                best_metric = val_result[config.best_model_metric]
+                print("Evaluating test dataset:")
+                evaluate(model, test_dataset)
+                torch.save(model.state_dict(), os.path.join(
+                config.save_path, f"{config.fusion}_best.pt"
+            ))
         if i + 1 == config.epochs:
             print("Evaluating test dataset on Closed World")
             model.load_state_dict(torch.load(os.path.join(
@@ -116,7 +124,7 @@ def evaluate(model, dataset):
         if key in key_set:
             result = result + key + "  " + str(round(test_stats[key], 4)) + "| "
     print(result)   
-    return loss_avg
+    return loss_avg, test_stats
 
 
 

@@ -194,7 +194,7 @@ class FusionTextImageBlock(nn.Module):
         self.crossblock_txt = CrossResidualAttentionBlock(width_txt, width_txt//64, attn_mask)
         self.resblocks_img = nn.Sequential(*[ResidualAttentionBlock(width_img, width_img//64, attn_mask) for _ in range(layers)])
         self.resblocks_txt = nn.Sequential(*[ResidualAttentionBlock(width_txt, width_txt//64, attn_mask) for _ in range(layers)])
-        self.txt_fine_tune = nn.Linear(768, 768)
+        self.txt_fine_tune = nn.Linear(self.width_txt, self.width_txt)
 
 
     def decompose(self, text_feature, idx):
@@ -224,10 +224,9 @@ class FusionTextImageBlock(nn.Module):
         x = self.img2txt_transform_layer1(x)
         x = x.permute(2,1,0)
         x = self.img2txt_transform_layer2(x)
-        x = x.permute(2,1,0).reshape(-1, self.context_length * (self.attributes + self.classes), 768)
+        x = x.permute(2,1,0).reshape(-1, (self.attributes + self.classes), self.width_txt)
         x = self.dropout(x)
         return x
-    
 
     def txt2img(self, x:torch.Tensor, idx, b: int):
         x = self.decompose(x, idx)
@@ -246,8 +245,8 @@ class FusionTextImageBlock(nn.Module):
             x_text = self.decompose(x_text, idx)
             x_txt = self.crossblock_txt(x_text.repeat(b, 1, 1), x_txt)
             x_txt = self.resblocks_txt(x_txt)
-            x_txt = x_txt.reshape(b, -1, self.attributes + self.classes, 768)
             x_txt = self.compose(x_txt, idx)
+            x_txt = x_txt.reshape(b, self.context_length, -1, self.width_txt)
             x_img = self.resblocks_img(x_img)
             return x_img, x_txt
         elif self.fusion == "img2txt":
@@ -255,8 +254,8 @@ class FusionTextImageBlock(nn.Module):
             x_text = self.decompose(x_text, idx)
             x_txt = self.crossblock_txt(x_text.repeat(b, 1, 1), x_txt)
             x_txt = self.resblocks_txt(x_txt)
-            x_txt = x_txt.reshape(b, -1, self.attributes + self.classes, 768)
             x_txt = self.compose(x_txt, idx)
+            x_txt = x_txt.reshape(b, self.context_length, -1, self.width_txt)
             x_img = self.resblocks_img(x_image)
             return x_img, x_txt
         elif self.fusion == "txt2img":

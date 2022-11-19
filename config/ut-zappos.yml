@@ -1,5 +1,5 @@
 model:
-  fusion: txt2img
+  fusion: img2txt
   K: 1
   prompt_template: "a photo of x x"
   clip_model: "ViT-L/14"
@@ -18,14 +18,15 @@ train:
   context_length: 8
   train_batch_size: 128
   gradient_accumulation_steps: 2
-  seed: 0
+  seed: 2134
   epochs: 20
   epoch_start: 0
   save_path: data/model/ut-zappos/dfsp
+  best_model_metric: best_loss     #best_unseen  best_seen AUC best_loss best_hm
   save_model: True
   load_model: False     # False or model path
   att_obj_w: 0.01
-  sp_w: 5
+  sp_w: 0.1
 
 test:
   eval_batch_size: 32
