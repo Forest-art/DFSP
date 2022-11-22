@@ -78,8 +78,8 @@ def train_model(model, optimizer, config, train_dataset, val_dataset, test_datas
         loss_avg, val_result = evaluate(model, val_dataset)
         print("Loss average on val dataset: {}".format(loss_avg))
         if config.best_model_metric == "best_loss":
-            if loss_avg < best_loss:
-                best_loss = loss_avg
+            if loss_avg.cpu().float() < best_loss:
+                best_loss = loss_avg.cpu().float()
                 print("Evaluating test dataset:")
                 evaluate(model, test_dataset)
                 torch.save(model.state_dict(), os.path.join(
