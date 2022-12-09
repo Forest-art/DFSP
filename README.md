@@ -55,3 +55,16 @@ python -u feasibility.py --dataset mit-states
 The feasibility similarities are saved at `data/feasibility_<dataset>.pt`.
 
 To run, just edit the open-world parameter in config/<dataset>.yml
+
+
+
+## References
+If you use this code, please cite
+```
+@article{lu2022decomposed,
+  title={Decomposed Soft Prompt Guided Fusion Enhancing for Compositional Zero-Shot Learning},
+  author={Lu, Xiaocheng and Liu, Ziming and Guo, Song and Guo, Jingcai},
+  journal={arXiv preprint arXiv:2211.10681},
+  year={2022}
+}
+```
