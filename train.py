@@ -124,6 +124,7 @@ def evaluate(model, dataset):
         if key in key_set:
             result = result + key + "  " + str(round(test_stats[key], 4)) + "| "
     print(result)   
+    model.train()
     return loss_avg, test_stats
 
 
